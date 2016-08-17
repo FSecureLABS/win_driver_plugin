@@ -222,6 +222,19 @@ def get_define(ioctl_code):
     name = "%s_0x%08X" % (idc.GetInputFile().split('.')[0],ioctl_code)
     return "#define %s CTL_CODE(0x%X, 0x%X, %s, %s)" % (name, device_code, function, method_name, access_name)
 
+def get_position_and_translate():
+    if idc.GetOpType(idc.ScreenEA(), 1) != 5:   # Immediate
+        return
+    ioctl_locs.add(idc.ScreenEA())
+    value = idc.GetOperandValue(idc.ScreenEA(), 1) & 0xffffffff
+    define = get_define(value)
+    idc.MakeComm(idc.ScreenEA(), define)
+    ioctls = []
+    for inst in ioctl_locs:
+        value = idc.GetOperandValue(inst, 1) & 0xffffffff
+        ioctls.append((inst,value))
+    print_table(ioctls)
+    
 class IOCTLDecodeHandler(idaapi.action_handler_t):
     def activate(self, ctx):
         get_position_and_translate()
