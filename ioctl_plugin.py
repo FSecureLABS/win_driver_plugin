@@ -18,6 +18,7 @@ To decode a single code:
 import sys
 import idc
 import idaapi
+import idautils
 
 ioctl_locs = set()
 invalid_ioctls = set()
@@ -176,19 +177,6 @@ def print_table(ioctls):
         method_name, method_code = get_method(ioctl_code)
         access_name, access_code = get_access(ioctl_code)
         print "0x%X | 0x%X | %31s (0x%X) | 0x%-6X | %17s (%d) | %s (%d)" % (addr, ioctl_code, device_name, device_code, function, method_name, method_code, access_name, access_code )
-    
-def get_position_and_translate():
-    if idc.GetOpType(idc.ScreenEA(), 1) != 5:   # Immediate
-        return
-    ioctl_locs.add(idc.ScreenEA())
-    value = idc.GetOperandValue(idc.ScreenEA(), 1) & 0xffffffff
-    define = get_define(value)
-    idc.MakeComm(idc.ScreenEA(), define)
-    ioctls = []
-    for inst in ioctl_locs:
-        value = idc.GetOperandValue(inst, 1) & 0xffffffff
-        ioctls.append((inst,value))
-    print_table(ioctls)
  
 def find_all_ioctls():
     global ioctl_locs
@@ -284,26 +272,122 @@ class WinIoCtlHooks(idaapi.UI_Hooks):
             idaapi.attach_dynamic_action_to_popup(form, popup, show_all, None)
             
 
+class UiAction(idaapi.action_handler_t):
+    def __init__(self, id, name, tooltip, menuPath, callback,shortcut):
+        idaapi.action_handler_t.__init__(self)
+        self.id = id
+        self.name = name
+        self.tooltip = tooltip
+        self.menuPath = menuPath
+        self.callback = callback
+        self.shortcut = shortcut
+
+        
+    def registerAction(self):
+        action_desc = idaapi.action_desc_t(
+        self.id,
+        self.name,
+        self,
+		self.shortcut,
+        self.tooltip,
+		0
+		)      
+        if not idaapi.register_action(action_desc):
+            return False
+        if not idaapi.attach_action_to_menu(self.menuPath, self.id, 0):
+            return False
+        return True
+
+    def unregisterAction(self):
+        idaapi.detach_action_from_menu(self.menuPath, self.id)
+        idaapi.unregister_action(self.id)
+
+    def activate(self, ctx):
+        self.callback(ctx)
+        return 1
+
+    def update(self, ctx):
+        return idaapi.AST_ENABLE_ALWAYS
+
+            
 class WinIoCtlPlugin(idaapi.plugin_t):
     flags = idaapi.PLUGIN_UNL
     comment = ('Decodes Windows Device I/O control code into ' +
                'DeviceType, FunctionCode, AccessType and MethodType.')
     help = ''
     wanted_name = 'Windows IOCTL code decoder'
-    wanted_hotkey = 'Ctrl-Alt-D'
-
+    #No hotkey for the plugin - individuals action have thier own
+    wanted_hotkey="" 
+    
     def init(self):
         global hooks
         hooks = WinIoCtlHooks()
         hooks.hook()
+        find_dispatch = UiAction(
+            id="ioctl:find_dispatch",
+			name="Find Dispatch",
+			tooltip="Attempts to find the dispatch function.",
+			menuPath="Edit/IOCTL/",
+			callback=self.find_dispatch_function,
+            shortcut="Ctrl+Alt+S"
+        )
+        find_dispatch.registerAction()
+        decode_ioctl = UiAction(
+            id="ioctl:decode",
+			name="Drop Database",
+			tooltip="Decodes the currently selected constant into it's IOCTL details.",
+			menuPath="Edit/IOCTL/",
+            shortcut="Ctrl+Alt+D",
+			callback=self.get_position_and_translate
+        )
+        decode_ioctl.registerAction()
         return idaapi.PLUGIN_OK
 
     def run(self, _=0):
-        get_position_and_translate()
+        pass
 
     def term(self):
         pass
 
+    def get_position_and_translate(self,ctx):
+        if idc.GetOpType(idc.ScreenEA(), 1) != 5:   # Immediate
+            return
+        ioctl_locs.add(idc.ScreenEA())
+        value = idc.GetOperandValue(idc.ScreenEA(), 1) & 0xffffffff
+        define = get_define(value)
+        idc.MakeComm(idc.ScreenEA(), define)
+        ioctls = []
+        for inst in ioctl_locs:
+            value = idc.GetOperandValue(inst, 1) & 0xffffffff
+            ioctls.append((inst,value))
+        print_table(ioctls)
 
+    def find_dispatch_function(self,ctx):
+        called = set()
+        caller = dict()
+        # Loop through all the functions in the binary
+        for function_ea in idautils.Functions():
+
+            f_name = GetFunctionName(function_ea)
+            # For each of the incoming references
+            for ref_ea in CodeRefsTo(function_ea, 0):
+                called.add(f_name)
+                # Get the name of the referring function
+                caller_name = GetFunctionName(ref_ea)
+                if caller_name not in caller.keys():
+                    caller[caller_name] = 1
+                else:
+                    caller[caller_name] += 1
+
+        while True:
+            if len(caller.keys()) == 0:
+                print "Couldn't find a candidate for the dispatch function :("
+                break
+            potential = max(caller, key=caller.get)
+            if potential not in called:
+                print "I beleive %s is likely the dispatch function." % (potential,)
+                break
+            del caller[potential]
+        
 def PLUGIN_ENTRY():
     return WinIoCtlPlugin()
