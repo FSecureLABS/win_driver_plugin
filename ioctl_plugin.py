@@ -367,7 +367,10 @@ class WinIoCtlPlugin(idaapi.plugin_t):
         caller = dict()
         # Loop through all the functions in the binary
         for function_ea in idautils.Functions():
-
+            flags = GetFunctionFlags(function_ea)
+            #skip library functions
+            if flags & FUNC_LIB:
+                continue
             f_name = GetFunctionName(function_ea)
             # For each of the incoming references
             for ref_ea in CodeRefsTo(function_ea, 0):
@@ -378,7 +381,6 @@ class WinIoCtlPlugin(idaapi.plugin_t):
                     caller[caller_name] = 1
                 else:
                     caller[caller_name] += 1
-
         while True:
             if len(caller.keys()) == 0:
                 print "Couldn't find a candidate for the dispatch function :("

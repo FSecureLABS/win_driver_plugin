@@ -24,7 +24,7 @@ After decode all is selected:
 ![](https://raw.githubusercontent.com/sam-b/ioctl_plugin/master/screenshots/after_decode_all.PNG)   
 The 'Show all IOCTLs' is present on the right click menu as well - this will open a form with a text box containing the C defines for all the IOCTL codes decoded in the current session.   
 ![](https://raw.githubusercontent.com/sam-b/ioctl_plugin/master/screenshots/show_all.PNG)    
-Using the shortcut 'CTRL+ALT+S' it is possible to attempt to find the IOCTL handler/dispatch function for a driver - this is done by finder the function that calls the most other functions but is not called by any functions itself.   
+Using the shortcut 'CTRL+ALT+S' it is possible to attempt to find the IOCTL handler/dispatch function for a driver - this is done by finder the function that calls the most other (non-library) functions but is not called by any functions itself.   
 ![](https://raw.githubusercontent.com/sam-b/ioctl_plugin/master/screenshots/dispatch_table_finder.PNG)
 ##Installation
 Just drop 'ioctl_plugin.py' into IDA's plugin directory.
