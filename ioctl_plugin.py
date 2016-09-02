@@ -20,18 +20,32 @@ import idc
 import idaapi
 import idautils
 
-ioctl_locs = set()
-invalid_ioctls = set()
+class IOCTLParser:
+    def __init__(self):
+        self.ioctl_locs = set()
+        self.invalid_ioctls = set()
+    
+    def get_valid_ioctls(self):
+        return self.ioctl_locs - self.invalid_ioctls
+
+    def add_ioctl(self,ioctl):
+        self.ioctl_locs.add(ioctl)
+
+    def add_invalid_ioctl(self,ioctl):
+        self.invalid_ioctls.add(ioctl)
+        
+    def remove_ioctl(self,ioctl):
+        self.ioctl_locs.remove(ioctl)
+        
+ioctl_parser = IOCTLParser()
 
 class DisplayIOCTLSForm(idaapi.Form):
     def __init__(self):
         Form.__init__(self, 
             """Decoded IOCTLs
-            {form_change}
             <:{text}>
             """
             , {
-                "form_change": Form.FormChangeCb(self.form_change),
                 "text":Form.MultiLineTextControl(),
             }
         )
@@ -39,11 +53,6 @@ class DisplayIOCTLSForm(idaapi.Form):
         self.Compile()
         self.text.value = "\n".join(get_all_defines())
         self.Execute()
-	
-    def form_change(self,fid):
-        if fid == -2:
-            self.Close(-1)
-
                       
 def get_device(ioctl_code):
     device_name_unknown = '<UNKNOWN>'
@@ -170,16 +179,15 @@ def get_define(ioctl_code):
 
 
 def print_table(ioctls):
-    print "%s | %s | %40s | %s | %21s | %s" % ("Address", "IOCTL Code", "Device", "Function", "Method", "Access")
+    print "%s | %s | %-40s | %s | %21s | %s" % ("Address", "IOCTL Code", "Device", "Function", "Method", "Access")
     for addr, ioctl_code in ioctls:
         function = get_function(ioctl_code)
         device_name, device_code = get_device(ioctl_code)
         method_name, method_code = get_method(ioctl_code)
         access_name, access_code = get_access(ioctl_code)
-        print "0x%X | 0x%X | %31s (0x%X) | 0x%-6X | %17s (%d) | %s (%d)" % (addr, ioctl_code, device_name, device_code, function, method_name, method_code, access_name, access_code )
+        print "0x%X | 0x%X | %-31s (0x%X) | 0x%-6X | %17s (%d) | %s (%d)" % (addr, ioctl_code, device_name, device_code, function, method_name, method_code, access_name, access_code )
  
 def find_all_ioctls():
-    global ioctl_locs
     ioctls = []
     addr = idc.ScreenEA()
     f = idaapi.get_func(addr)
@@ -189,10 +197,9 @@ def find_all_ioctls():
         last_inst = idc.PrevHead(block.endEA)
         if idc.GetMnem(penultimate_inst) in ['cmp','sub'] and idc.GetOpType(penultimate_inst, 1) == 5:
             if idc.GetMnem(last_inst) == 'jz':
-                ioctl_locs.add(penultimate_inst)
-    ioctl_locs = ioctl_locs - invalid_ioctls
-    for inst in ioctl_locs:
-        value = idc.GetOperandValue(inst, 1) & 0xffffffff
+                ioctl_parser.add_ioctl(penultimate_inst)
+    for inst in ioctl_parser.get_valid_ioctls():
+        value = get_operand_value(inst)
         ioctls.append((inst,value))
     return ioctls
 
@@ -204,11 +211,9 @@ def decode_all_ioctls():
     print_table(ioctls)
 
 def get_all_defines():
-    global ioctl_locs
-    ioctl_locs = ioctl_locs - invalid_ioctls
     defines = []
-    for inst in ioctl_locs:
-        value = idc.GetOperandValue(inst, 1) & 0xffffffff
+    for inst in ioctl_parser.get_valid_ioctls():
+        value = get_operand_value(inst)
         define = get_define(value)
         defines.append(define)
     return defines
@@ -222,16 +227,19 @@ def get_define(ioctl_code):
     name = "%s_0x%08X" % (idc.GetInputFile().split('.')[0],ioctl_code)
     return "#define %s CTL_CODE(0x%X, 0x%X, %s, %s)" % (name, device_code, function, method_name, access_name)
 
+def get_operand_value(addr):
+    return idc.GetOperandValue(addr, 1) & 0xffffffff
+
 def get_position_and_translate():
     if idc.GetOpType(idc.ScreenEA(), 1) != 5:   # Immediate
         return
-    ioctl_locs.add(idc.ScreenEA())
-    value = idc.GetOperandValue(idc.ScreenEA(), 1) & 0xffffffff
+    ioctl_parser.add_ioctl(idc.ScreenEA())
+    value = get_operand_value(idc.ScreenEA())
     define = get_define(value)
     idc.MakeComm(idc.ScreenEA(), define)
     ioctls = []
     for inst in ioctl_locs:
-        value = idc.GetOperandValue(inst, 1) & 0xffffffff
+        value = get_operand_value(inst)
         ioctls.append((inst,value))
     print_table(ioctls)
     
@@ -258,8 +266,8 @@ class IOCTLShowAllHandler(idaapi.action_handler_t):
 
 class IOCTLInvalidHandler(idaapi.action_handler_t):
     def activate(self, ctx):
-        ioctl_locs.remove(idc.ScreenEA())
-        invalid_ioctls.add(idc.ScreenEA())
+        ioctl_parser.remove_ioctl(idc.ScreenEA())
+        ioctl_parser.add_invalid_ioctl(idc.ScreenEA())
 
     def update(self, ctx):
         return idaapi.AST_ENABLE_ALWAYS
@@ -275,7 +283,7 @@ class WinIoCtlHooks(idaapi.UI_Hooks):
             if idc.GetOpType(idc.ScreenEA(), 1) == 5:
                 single_desc = idaapi.action_desc_t(None, 'Decode IOCTL', IOCTLDecodeHandler())
                 idaapi.attach_dynamic_action_to_popup(form, popup, single_desc, None)
-                if idc.ScreenEA() in ioctl_locs:
+                if idc.ScreenEA() in ioctl_parser.ioctl_locs:
                     invalid_ioctl = idaapi.action_desc_t(None, 'Invalid IOCTL', IOCTLInvalidHandler())
                     idaapi.attach_dynamic_action_to_popup(form, popup, invalid_ioctl, None)
             if idaapi.get_func(idc.ScreenEA()).startEA == idc.ScreenEA():
@@ -325,8 +333,7 @@ class UiAction(idaapi.action_handler_t):
             
 class WinIoCtlPlugin(idaapi.plugin_t):
     flags = idaapi.PLUGIN_UNL
-    comment = ('Decodes Windows Device I/O control code into ' +
-               'DeviceType, FunctionCode, AccessType and MethodType.')
+    comment = "Decodes Windows Device I/O control code into DeviceType, FunctionCode, AccessType and MethodType."
     help = ''
     wanted_name = 'Windows IOCTL code decoder'
     #No hotkey for the plugin - individuals action have thier own
@@ -365,13 +372,13 @@ class WinIoCtlPlugin(idaapi.plugin_t):
     def get_position_and_translate(self,ctx):
         if idc.GetOpType(idc.ScreenEA(), 1) != 5:   # Immediate
             return
-        ioctl_locs.add(idc.ScreenEA())
-        value = idc.GetOperandValue(idc.ScreenEA(), 1) & 0xffffffff
+        ioctl_parser.add_ioctl(idc.ScreenEA())
+        value = get_operand_value(idc.ScreenEA())
         define = get_define(value)
         idc.MakeComm(idc.ScreenEA(), define)
         ioctls = []
-        for inst in ioctl_locs:
-            value = idc.GetOperandValue(inst, 1) & 0xffffffff
+        for inst in ioctl_parser.get_valid_ioctls():
+            value = get_operand_value(inst)
             ioctls.append((inst,value))
         print_table(ioctls)
 
