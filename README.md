@@ -30,5 +30,5 @@ pip install https://github.com/fireeye/flare-floss/zipball/master`
 ![](/screenshots/decode_all_ioctls_fail.PNG)
 ##Acknowledgements
 The IOCTL code parsing functions are mostly based off of Satoshi Tanda's https://github.com/tandasat/WinIoCtlDecoder/blob/master/plugins/WinIoCtlDecoder.py
-The original code for adding items to the right-click menu came from 'herrcore' https://gist.github.com/herrcore/b3143dde185cecda7c1dee7ffbce5d2c
+The original code for adding items to the right-click menu (and possibly some other random snippets) came from 'herrcore' https://gist.github.com/herrcore/b3143dde185cecda7c1dee7ffbce5d2c
 The logic for calling floss and the unicode string finding functions are taken from https://github.com/fireeye/flare-floss

@@ -1,8 +1,13 @@
-#
-#
+"""
+Provides functions for decoding 32 bit IOCTL codes into the constants used for them and C defines which use the CTL_CODE macro
+A bulk of the code here is taken from Satoshi Tanda's https://github.com/tandasat/WinIoCtlDecoder/blob/master/plugins/WinIoCtlDecoder.py
+"""
 import idc
 
+
 def get_device(ioctl_code):
+    """Returns the correct device name for a 32 bit IOCTL code"""
+
     device_name_unknown = '<UNKNOWN>'
     device_names = [
         device_name_unknown,                # 0x00000000
@@ -93,6 +98,8 @@ def get_device(ioctl_code):
 
 
 def get_method(ioctl_code):
+    """Returns the correct method type name for a 32 bit IOCTL code"""
+    
     method_names = [
         'METHOD_BUFFERED',
         'METHOD_IN_DIRECT',
@@ -104,6 +111,8 @@ def get_method(ioctl_code):
 
 
 def get_access(ioctl_code):
+    """Returns the correct access type name for a 32 bit IOCTL code"""
+    
     access_names = [
         'FILE_ANY_ACCESS',
         'FILE_READ_ACCESS',
@@ -115,11 +124,13 @@ def get_access(ioctl_code):
 
 
 def get_function(ioctl_code):
+    """Calculates the function code from a 32 bit IOCTL code"""
+
     return (ioctl_code >> 2) & 0xfff
 
 
-# Decodes an ioctl code and returns a C define for it using the CTL_CODE macro
 def get_define(ioctl_code):
+    """Decodes an ioctl code and returns a C define for it using the CTL_CODE macro"""
 
     function = get_function(ioctl_code)
     device_name, device_code = get_device(ioctl_code)

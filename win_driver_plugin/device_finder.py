@@ -1,5 +1,5 @@
-# Device name finding functions.
-# A bulk of this is taken from https://github.com/fireeye/flare-floss
+""" Device name finding functions. Using a unicode string search and searching for stack based and obsfucated strings.
+ A bulk of this is taken from https://github.com/fireeye/flare-floss"""
 import mmap
 import re
 import collections
@@ -14,6 +14,8 @@ String = collections.namedtuple("String", ["s", "offset"])
 
 
 def buf_filled_with(buf, character):
+    """Returns true if the buffer is filled with the recurring character"""
+
     dupe_chunk = character * SLICE_SIZE
     for offset in xrange(0, len(buf), SLICE_SIZE):
         new_chunk = buf[offset: offset + SLICE_SIZE]
@@ -22,8 +24,8 @@ def buf_filled_with(buf, character):
     return True
 
 
-# Extract naive UTF-16 strings from the given binary data.
 def extract_unicode_strings(buf, n=4):
+    """Extract naive UTF-16 strings from the given binary data."""
 
     if not buf:
         return
@@ -44,6 +46,8 @@ def extract_unicode_strings(buf, n=4):
 
 
 def get_unicode_device_names():
+    """Returns all unicode strings within the binary currently being analysed in IDA which might be device names"""
+
     path = idc.GetInputFile()
     min_length = 4
     possible_names = set()
@@ -51,18 +55,36 @@ def get_unicode_device_names():
         b = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
         for s in extract_unicode_strings(b, n=min_length):
-            if str(s.s).startswith('\\Device\\'):
+            s_str = str(s.s)
+            if s_str.startswith('\\Device\\') or s_str.startswith('\\DosDevices\\'):
                 possible_names.add(str(s.s))
     return possible_names
 
 
 def find_unicode_device_name():
+    """Attempts to find and output potential device names - returning False if none are found so further analysis can be done"""
+
     possible_names = get_unicode_device_names()
-    if len(possible_names) == 1:
-        if possible_names.pop() == '\\Device\\':
-            print "The Device prefix was found but no full device paths, the device name is likely obsfucated or created on the stack."
-            return False
-    elif len(possible_names) > 1:
+    if len(possible_names) == 1 or len(possible_names) == 2:
+        if '\\Device\\' in possible_names or '\\DosDevices\\' in possible_names:
+            if len(possible_names) == 1:
+                print "The Device prefix was found but no full device paths, the device name is likely obsfucated or created on the stack."
+                return False
+            elif '\\Device\\' in possible_names and '\\DosDevices\\' in possible_names:
+                print "The Device prefixs were found but no full device paths, the device name is likely obsfucated or created on the stack."
+                return False
+            else:
+                print "Potential device name: "
+                for i in possible_names:
+                    if i != '\\Device\\' and i != '\\DosDevices\\':
+                        print i
+            return True
+        else:
+            print "Potential device names: "
+            for i in possible_names:
+                print i
+            return True
+    elif len(possible_names) > 2:
         print "Possible devices names found:"
         for i in possible_names:
             print "\t" + i
@@ -73,6 +95,11 @@ def find_unicode_device_name():
 
 
 def search():
+    """
+    Attempts to find potential device names in the currently opened binary, it starts by searching for unicode device names,
+    if this fails then it utilises FLOSS to search for stack based and obsfucated strings.
+    """
+
     if not find_unicode_device_name():
         print "Unicode device name not found, attempting to find obsfucated and stack based strings."
         try:
@@ -105,11 +132,8 @@ def search():
         if len(decoded_strings) > 0:
             for i in decoded_strings:
                 device_names.add(str(i.s))
-            print "Potential devices names from obsfucated or stack strings:"
+            print "Potential device names from obsfucated or stack strings:"
             for i in device_names:
-                if i.startswith('\\Device\\'):
-                    print i
-                else:
-                    print '\\Device\\' + i
+                print i
         else:
             print "No obsfucated or stack strings found :("

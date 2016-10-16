@@ -1,20 +1,15 @@
-#!/usr/bin/python
 """Decodes 32-Bit Windows Device I/O control codes.
 
 Author:
-    Sam Brown but heavily borrowing from Satoshi Tanda:
-        https://github.com/tandasat/WinIoCtlDecoder/blob/master/plugins/WinIoCtlDecoder.py
-    and 'herrcore':
-        https://gist.github.com/herrcore/b3143dde185cecda7c1dee7ffbce5d2c
+    Sam Brown
 
 Description:
-    Decodes Windows Device I/O control code into DeviceType, FunctionCode,
+    *  Discover driver device names by search through present unicode strings and if not found
+    searches for stack based strings or obsfucated strings which could be the device name
+    *  Decodes Windows Device I/O control code into DeviceType, FunctionCode,
     AccessType, MethodType and a useable C define.
-
-To decode a single code:
-    1. Select an interesting IOCTL code in the disassemble window.
-    2. Hit Ctrl-Alt-D or select Edit/Plugins/Windows IOCTL code decoder
-
+    *  Attempts to locate the driver dispatch handler by doing some basic CFG analysis and checking
+       offsets at which function pointers are loaded into memory.
 """
 
 import idc
@@ -24,8 +19,9 @@ import idautils
 import win_driver_plugin.device_finder as device_finder
 import win_driver_plugin.ioctl_decoder as ioctl_decoder
 
-# Used for creating actions exposed in the menu and via hot keys
 class UiAction(idaapi.action_handler_t):
+    """Simple wrapper class for creating action handlers which add options to menu's and are triggered via hot keys"""
+
     def __init__(self, id, name, tooltip, menuPath, callback, shortcut):
         idaapi.action_handler_t.__init__(self)
         self.id = id
@@ -63,7 +59,11 @@ class UiAction(idaapi.action_handler_t):
 
 
 def make_comment(pos, string):
-    # If the address is already commented append the new comment to the existing comment
+    """
+    Creates a comment with contents `string` at address `pos`.
+    If the address is already commented append the new comment to the existing comment
+    """
+    
     current_comment = idc.Comment(pos)
     if not current_comment:
         idc.MakeComm(pos, string)
@@ -72,11 +72,14 @@ def make_comment(pos, string):
 
 
 def get_operand_value(addr):
+    """Returns the value of the second operand to the instruction at `addr` masked to be a 32 bit value"""
+
     return idc.GetOperandValue(addr, 1) & 0xffffffff
 
 
-# Creates a pop up dialogue with all indexed IOCTL code definitions inside of a multi line text box
 class DisplayIOCTLSForm(idaapi.Form):
+    """Creates a pop up dialogue with all indexed IOCTL code definitions inside of a multi line text box"""
+
     def __init__(self):
         Form.__init__(
                         self,
@@ -92,20 +95,14 @@ class DisplayIOCTLSForm(idaapi.Form):
         self.Execute()
 
 
-# Simple container to keep track of decode IOCTL codes and codes marked as invalid
-class IOCTLParser:
+class IOCTLTracker:
+    """A simple container to keep track of decoded IOCTL codes and codes marked as invalid"""
+
     def __init__(self):
         self.ioctl_locs = set()
-        self.invalid_ioctls = set()
-
-    def get_valid_ioctls(self):
-        return self.ioctl_locs - self.invalid_ioctls
 
     def add_ioctl(self, ioctl):
         self.ioctl_locs.add(ioctl)
-
-    def add_invalid_ioctl(self, ioctl):
-        self.invalid_ioctls.add(ioctl)
 
     def remove_ioctl(self, ioctl):
         self.ioctl_locs.remove(ioctl)
@@ -122,58 +119,79 @@ class IOCTLParser:
 
 
 def find_all_ioctls():
+    """
+    From the currently selected address attempts to traverse all blocks inside the current function to find all immediate values which
+    are used for a comparison/sub immediately before a jz. Returns a list of address, second operand pairs.
+    """
+    
     ioctls = []
+    # Find the currently selected function and get a list of all of it's basic blocks
     addr = idc.ScreenEA()
     f = idaapi.get_func(addr)
     fc = idaapi.FlowChart(f, flags=idaapi.FC_PREDS)
     for block in fc:
-        penultimate_inst = idc.PrevHead(idc.PrevHead(block.endEA))
+        # grab the last two instructions in the block 
         last_inst = idc.PrevHead(block.endEA)
+        penultimate_inst = idc.PrevHead(last_inst)
+        # If the penultimate instruction is cmp or sub against an immediate value immediatly preceding a 'jz' 
+        # then it's a decent guess that it's an IOCTL code (if this is a disptach function)
         if idc.GetMnem(penultimate_inst) in ['cmp', 'sub'] and idc.GetOpType(penultimate_inst, 1) == 5:
             if idc.GetMnem(last_inst) == 'jz':
-                ioctl_parser.add_ioctl(penultimate_inst)
-    for inst in ioctl_parser.get_valid_ioctls():
+                ioctl_tracker.add_ioctl(penultimate_inst)
+    for inst in ioctl_tracker.ioctl_locs:
         value = get_operand_value(inst)
         ioctls.append((inst, value))
     return ioctls
 
 
 def decode_all_ioctls():
+    """Attempts to locate all the IOCTLs in a function and decode them all"""
+
+    global ioctl_tracker
     ioctls = find_all_ioctls()
     for addr, ioctl_code in ioctls:
         define = ioctl_decoder.get_define(ioctl_code)
         make_comment(addr, define)
-    ioctl_parser.print_table(ioctls)
+    ioctl_tracker.print_table(ioctls)
 
 
 def get_all_defines():
+    """Returns the C defines for all ICOTL codes which have been marked during the current session"""
+
+    global ioctl_tracker
     defines = []
-    for inst in ioctl_parser.get_valid_ioctls():
+    for inst in ioctl_tracker.ioctl_locs:
         value = get_operand_value(inst)
         define = ioctl_decoder.get_define(value)
         defines.append(define)
     return defines
 
 
-# Gets the current selected address and decodes the second parameter to the instruction if it exists/is an immediate
-# then adds the C define for the code as a comment and prints a summary table of all decoded IOCTL codes.
 def get_position_and_translate():
+    """
+    Gets the current selected address and decodes the second parameter to the instruction if it exists/is an immediate
+    then adds the C define for the code as a comment and prints a summary table of all decoded IOCTL codes.
+    """
+
     pos = idc.ScreenEA()
     if idc.GetOpType(pos, 1) != 5:   # Check the second operand to the instruction is an immediate
         return
-    ioctl_parser.add_ioctl(pos)
+    ioctl_tracker.add_ioctl(pos)
     value = get_operand_value(pos)
     define = ioctl_decoder.get_define(value)
     make_comment(pos, define)
     # Print summary table each time a new IOCTL code is decoded
     ioctls = []
-    for inst in ioctl_parser.ioctl_locs:
+    for inst in ioctl_tracker.ioctl_locs:
         value = get_operand_value(inst)
         ioctls.append((inst, value))
-    ioctl_parser.print_table(ioctls)
+    ioctl_tracker.print_table(ioctls)
 
 
 def find_dispatch_by_struct_index():
+    """Attempts to locate the dispatch function based off it being loaded in a structure
+    at offset 70h, based off of https://github.com/kbandla/ImmunityDebugger/blob/master/1.73/Libs/driverlib.py """
+    
     out = set()
     for function_ea in idautils.Functions():
         flags = GetFunctionFlags(function_ea)
@@ -191,6 +209,12 @@ def find_dispatch_by_struct_index():
 
 
 def find_dispatch_by_cfg():
+    """ 
+    Finds the functions in the binary which are not directly called anywhere and counts how many other functions they call,
+    returing all functions which call > 0 other functions but are not called themselves. As a dispatch function is not normally directly
+    called but will normally many other functions this is a fairly good way to guess which function it is.
+    """
+        
     out = []
     called = set()
     caller = dict()
@@ -221,16 +245,23 @@ def find_dispatch_by_cfg():
 
 
 def find_dispatch_function():
+    """
+    Compares and processes results of `find_dispatch_by_struct_index` and `find_dispatch_by_cfg` 
+    to output potential dispatch function addresses
+    """
+
     index_funcs = find_dispatch_by_struct_index()
     cfg_funcs = find_dispatch_by_cfg()
     if len(index_funcs) == 0:
-        print "Based off of basic CFG analysis the likely dispatch function is: " + cfg_funcs[0]
+        cfg_finds_to_print = min(len(cfg_funcs),3)
+        for i in range(cfg_finds_to_print):
+            print "Based off of basic CFG analysis the potential dispatch functions are: " + cfg_funcs[i]
     elif len(index_funcs) == 1:
         func = index_funcs.pop()
         if func in cfg_funcs:
             print "The likely dispatch function is: " + func
         else:
-            print "Based off of basic the offset it is loaded at a potential dispatch function is: " + func
+            print "Based off of the offset it is loaded at a potential dispatch function is: " + func
             print "Based off of basic CFG analysis the likely dispatch function is: " + cfg_funcs[0]
     else:
         print "Potential dispatch functions: "
@@ -240,33 +271,54 @@ def find_dispatch_function():
 
 
 class ActionHandler(idaapi.action_handler_t):
+    """Basic wrapper class to avoid all action handlers needing to implement update identically"""
+
     def update(self, ctx):
         return idaapi.AST_ENABLE_ALWAYS
 
 
 class DecodeHandler(ActionHandler):
+    """Wrapper for `get_position_and_translate` used for right-click context menu hook"""
+
     def activate(self, ctx):
         get_position_and_translate()
 
 
 class DecodeAllHandler(ActionHandler):
+    """Wrapper for `decode_all_ioctls` used for right-click context menu hook"""
+    
     def activate(self, ctx):
         decode_all_ioctls()
 
 
 class ShowAllHandler(ActionHandler):
+    """Used for Show All option in right-click context menu, creates a `DisplayIOCTLSForm` instance, remaining logic is contained within that class."""
+
     def activate(self, ctx):
         DisplayIOCTLSForm()
 
 
 class InvalidHandler(ActionHandler):
+    """
+    Only available when right-clicking on an address marked as an IOCTL code location, removes it from the location list 
+    and deletes C define comment marking it (but leaves any other comment content at that location intact).
+    """
+    
     def activate(self, ctx):
         pos = idc.ScreenEA()
-        ioctl_parser.remove_ioctl(pos)
-        ioctl_parser.add_invalid_ioctl(pos)
+        # Get current comment for this instruction and remove the C define from it, if present
+        comment = idc.Comment(pos)
+        code = get_operand_value(pos)
+        define = ioctl_decoder.get_define(code)
+        comment = comment.replace(define, "")
+        idc.MakeComm(pos, comment)
+        # Remove the ioctl from the valid list and add it to the invalid list to avoid 'find_all_ioctls' accidently re-indexing it.
+        ioctl_tracker.remove_ioctl(pos)
 
 
 def register_dynamic_action(form, popup, description, handler):
+    """Registers a new item in a popup which will trigger a function when selected""" 
+
     # Note the 'None' as action name (1st parameter).
     # That's because the action will be deleted immediately
     # after the context menu is hidden anyway, so there's
@@ -276,6 +328,8 @@ def register_dynamic_action(form, popup, description, handler):
 
 
 class WinDriverHooks(idaapi.UI_Hooks):
+    """Installs hook function which is triggered when popup forms are created and adds extra menu options if it is the right-click disasm view menu"""
+
     def finish_populating_tform_popup(self, form, popup):
         tft = idaapi.get_tform_type(form)
         if tft != idaapi.BWN_DISASM:
@@ -286,7 +340,7 @@ class WinDriverHooks(idaapi.UI_Hooks):
         # then give the option to decode it.
         if idc.GetOpType(pos, 1) == 5:
             register_dynamic_action(form, popup, 'Decode IOCTL', DecodeHandler())
-            if pos in ioctl_parser.ioctl_locs:
+            if pos in ioctl_tracker.ioctl_locs:
                 register_dynamic_action(form, popup, 'Invalid IOCTL', InvalidHandler())
         if idaapi.get_func(pos).startEA == pos:
             register_dynamic_action(form, popup, 'Decode All IOCTLs', DecodeAllHandler())
@@ -294,6 +348,8 @@ class WinDriverHooks(idaapi.UI_Hooks):
 
 
 class WinDriverPlugin(idaapi.plugin_t):
+    """Main plugin class, registers the various menu items, hot keys and menu hooks as well as initialising the plugins global state."""
+
     flags = idaapi.PLUGIN_UNL
     comment = "Decodes Windows Device I/O control codes into DeviceType, FunctionCode, AccessType and MethodType."
     help = ''
@@ -302,8 +358,8 @@ class WinDriverPlugin(idaapi.plugin_t):
     wanted_hotkey = ""
 
     def init(self):
-        global ioctl_parser
-        ioctl_parser = IOCTLParser()
+        global ioctl_tracker
+        ioctl_tracker = IOCTLTracker()
         global hooks
         hooks = WinDriverHooks()
         hooks.hook()
