@@ -101,8 +101,14 @@ class MyChoose2(Choose2):
         pass
 
     def OnSelectLine(self, n):
-        self.selcount += 1
-        Warning("[%02d] selectline '%s'" % (self.selcount, n))
+        try:
+            item = self.items[n]
+            jump_ea = int(item[0], 16)
+            # Only jump for valid addresses
+            if idc.isEnabled(jump_ea):
+                idc.Jump(jump_ea)
+        except:
+            print "OnSelectLine", sys.exc_info()[1]
 
     def OnGetLine(self, n):
         return self.items[n]
