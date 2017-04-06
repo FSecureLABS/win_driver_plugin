@@ -53,6 +53,7 @@ If you right click on the first instruction of the function you beleive to be th
 The IOCTL code parsing functions are mostly based off of Satoshi Tanda's https://github.com/tandasat/WinIoCtlDecoder/blob/master/plugins/WinIoCtlDecoder.py   
 The original code for adding items to the right-click menu (and possibly some other random snippets) came from 'herrcore' https://gist.github.com/herrcore/b3143dde185cecda7c1dee7ffbce5d2c   
 The logic for calling floss and the unicode string finding functions are taken from https://github.com/fireeye/flare-floss   
+The driver type identification code logic is taken from NCC Group's DriverBuddy plugin https://github.com/nccgroup/DriverBuddy    
 
 ##License
 
