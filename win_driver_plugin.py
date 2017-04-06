@@ -18,6 +18,10 @@ import idautils
 
 import win_driver_plugin.device_finder as device_finder
 import win_driver_plugin.ioctl_decoder as ioctl_decoder
+import win_driver_plugin.create_tab_table as create_tab_table
+import win_driver_plugin.device_type as device_type
+
+from PySide import QtGui, QtCore
 
 class UiAction(idaapi.action_handler_t):
     """Simple wrapper class for creating action handlers which add options to menu's and are triggered via hot keys"""
@@ -76,25 +80,6 @@ def get_operand_value(addr):
 
     return idc.GetOperandValue(addr, 1) & 0xffffffff
 
-
-class DisplayIOCTLSForm(idaapi.Form):
-    """Creates a pop up dialogue with all indexed IOCTL code definitions inside of a multi line text box"""
-
-    def __init__(self):
-        Form.__init__(
-                        self,
-                        """Decoded IOCTLs
-                        <:{text}>
-                        """, {
-                            "text": Form.MultiLineTextControl()
-                        }
-        )
-
-        self.Compile()
-        self.text.value = "\n".join(get_all_defines())
-        self.Execute()
-
-
 class IOCTLTracker:
     """A simple container to keep track of decoded IOCTL codes and codes marked as invalid"""
 
@@ -108,14 +93,14 @@ class IOCTLTracker:
         self.ioctl_locs.remove(ioctl)
 
     def print_table(self, ioctls):
-        print "%s | %s | %-40s | %s | %21s | %s" % ("Address", "IOCTL Code", "Device", "Function", "Method", "Access")
+        print "%-10s | %-10s | %-42s | %-10s | %-22s | %s" % ("Address", "IOCTL Code", "Device", "Function", "Method", "Access")
         for addr, ioctl_code in ioctls:
             function = ioctl_decoder.get_function(ioctl_code)
             device_name, device_code = ioctl_decoder.get_device(ioctl_code)
             method_name, method_code = ioctl_decoder.get_method(ioctl_code)
             access_name, access_code = ioctl_decoder.get_access(ioctl_code)
             all_vars = (addr, ioctl_code, device_name, device_code, function, method_name, method_code, access_name, access_code)
-            print "0x%X | 0x%X | %-31s (0x%X) | 0x%-6X | %17s (%d) | %s (%d)" % all_vars
+            print "0x%-8X | 0x%-8X | %-31s 0x%-8X | 0x%-8X | %-17s %-4d | %s (%d)" % all_vars
 
 
 def find_all_ioctls():
@@ -153,19 +138,6 @@ def decode_all_ioctls():
         define = ioctl_decoder.get_define(ioctl_code)
         make_comment(addr, define)
     ioctl_tracker.print_table(ioctls)
-
-
-def get_all_defines():
-    """Returns the C defines for all ICOTL codes which have been marked during the current session"""
-
-    global ioctl_tracker
-    defines = []
-    for inst in ioctl_tracker.ioctl_locs:
-        value = get_operand_value(inst)
-        define = ioctl_decoder.get_define(value)
-        defines.append(define)
-    return defines
-
 
 def get_position_and_translate():
     """
@@ -295,7 +267,7 @@ class ShowAllHandler(ActionHandler):
     """Used for Show All option in right-click context menu, creates a `DisplayIOCTLSForm` instance, remaining logic is contained within that class."""
 
     def activate(self, ctx):
-        DisplayIOCTLSForm()
+        create_tab_table.create_ioctl_tab(ioctl_tracker)
 
 
 class InvalidHandler(ActionHandler):
@@ -324,7 +296,7 @@ def register_dynamic_action(form, popup, description, handler):
     # after the context menu is hidden anyway, so there's
     # really no need giving it a valid ID.
     action = idaapi.action_desc_t(None, description, handler)
-    idaapi.attach_dynamic_action_to_popup(form, popup, action, None)
+    idaapi.attach_dynamic_action_to_popup(form, popup, action, 'Driver Plugin/')
 
 
 class WinDriverHooks(idaapi.UI_Hooks):
@@ -334,7 +306,8 @@ class WinDriverHooks(idaapi.UI_Hooks):
         tft = idaapi.get_tform_type(form)
         if tft != idaapi.BWN_DISASM:
             return
-
+        if not device_type.is_driver():
+            return
         pos = idc.ScreenEA()
         # If the second argument to the current selected instruction is an immediately
         # then give the option to decode it.
@@ -342,9 +315,9 @@ class WinDriverHooks(idaapi.UI_Hooks):
             register_dynamic_action(form, popup, 'Decode IOCTL', DecodeHandler())
             if pos in ioctl_tracker.ioctl_locs:
                 register_dynamic_action(form, popup, 'Invalid IOCTL', InvalidHandler())
-        if idaapi.get_func(pos).startEA == pos:
-            register_dynamic_action(form, popup, 'Decode All IOCTLs', DecodeAllHandler())
-        register_dynamic_action(form, popup, 'Show All IOCTLs', ShowAllHandler())
+        register_dynamic_action(form, popup, 'Decode All IOCTLs in Function', DecodeAllHandler())
+        if len(ioctl_tracker.ioctl_locs) > 0:
+            register_dynamic_action(form, popup, 'Show All IOCTLs', ShowAllHandler())
 
 
 class WinDriverPlugin(idaapi.plugin_t):
