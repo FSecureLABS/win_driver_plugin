@@ -21,7 +21,11 @@ import win_driver_plugin.ioctl_decoder as ioctl_decoder
 import win_driver_plugin.create_tab_table as create_tab_table
 import win_driver_plugin.device_type as device_type
 
-from PySide import QtGui, QtCore
+if idaapi.IDA_SDK_VERSION < 690:
+    from PySide import QtGui, QtCore
+else:
+    from PyQt5 import QtCore, QtGui
+
 
 class UiAction(idaapi.action_handler_t):
     """Simple wrapper class for creating action handlers which add options to menu's and are triggered via hot keys"""
