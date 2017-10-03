@@ -4,6 +4,7 @@ import mmap
 import re
 import collections
 import idc
+import logging
 
 ASCII_BYTE = " !\"#\$%&\'\(\)\*\+,-\./0123456789:;<=>\?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\[\]\^_`abcdefghijklmnopqrstuvwxyz\{\|\}\\\~\t"
 UNICODE_RE_4 = re.compile(b"((?:[%s]\x00){%d,})" % (ASCII_BYTE, 4))
@@ -110,7 +111,9 @@ def search():
             import viv_utils
         except:
             print "Please install FLOSS to continue, see: https://github.com/fireeye/flare-floss/"
-
+            return
+        logging.basicConfig() #To avoid logger handler not found errors, from https://github.com/fireeye/flare-floss/blob/66f67a49a38ae028a5e86f1de743c384d5271901/scripts/idaplugin.py#L154
+        logging.getLogger('vtrace.platforms.win32').setLevel(logging.ERROR)
         sample_file_path = idc.GetInputFile()
 
         try:
@@ -123,12 +126,11 @@ def search():
         plugins = floss.main.get_all_plugins()
         device_names = set()
 
-        stack_strings = floss.stackstrings.extract_stackstrings(vw, functions)
+        stack_strings = floss.stackstrings.extract_stackstrings(vw, functions, 4, no_filter=True)
         for i in stack_strings:
             device_names.add(i)
         dec_func_candidates = floss.identification_manager.identify_decoding_functions(vw, plugins, functions)
-        func_index = viv_utils.InstructionFunctionIndex(vw)
-        decoded_strings = floss.main.decode_strings(vw, func_index, dec_func_candidates)
+        decoded_strings = floss.main.decode_strings(vw, dec_func_candidates, 4, no_filter=True)
         if len(decoded_strings) > 0:
             for i in decoded_strings:
                 device_names.add(str(i.s))

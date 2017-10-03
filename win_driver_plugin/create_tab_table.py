@@ -5,6 +5,7 @@ import driverlib
 import re
 import ctypes
 import ioctl_decoder as ioctl_decoder
+import sys
 
 # Get required functions, strcpy..
 strcpy = ctypes.cdll.msvcrt.strcpy
@@ -101,14 +102,17 @@ class MyChoose2(Choose2):
         pass
 
     def OnSelectLine(self, n):
-        try:
-            item = self.items[n]
-            jump_ea = int(item[0], 16)
-            # Only jump for valid addresses
-            if idc.isEnabled(jump_ea):
-                idc.Jump(jump_ea)
-        except:
-            print "OnSelectLine", sys.exc_info()[1]
+
+		item = self.items[n]
+
+		jump_ea = int(item[0], 16)
+		# Only jump for valid addresses
+		if idaapi.IDA_SDK_VERSION < 700:
+			valid_addr = idc.isEnabled(jump_ea)
+		else:
+			valid_addr = idc.is_mapped(jump_ea)
+		if valid_addr:
+			idc.Jump(jump_ea)
 
     def OnGetLine(self, n):
         return self.items[n]
