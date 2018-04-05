@@ -4,10 +4,10 @@ Author:
     Sam Brown
 
 Description:
-    *  Discover driver device names by search through present unicode strings and if not found
-    searches for stack based strings or obsfucated strings which could be the device name
+    *  Discover driver device names by search through present Unicode strings and if not found
+    searches for stack based strings or obfuscated strings which could be the device name
     *  Decodes Windows Device I/O control code into DeviceType, FunctionCode,
-    AccessType, MethodType and a useable C define.
+    AccessType, MethodType and a usable C define.
     *  Attempts to locate the driver dispatch handler by doing some basic CFG analysis and checking
        offsets at which function pointers are loaded into memory.
 """
@@ -20,6 +20,8 @@ import win_driver_plugin.device_finder as device_finder
 import win_driver_plugin.ioctl_decoder as ioctl_decoder
 import win_driver_plugin.create_tab_table as create_tab_table
 import win_driver_plugin.device_type as device_type
+import win_driver_plugin.angr_analysis as angr_analysis
+import win_driver_plugin.dump_pool_tags as dump_pool_tags
 
 if idaapi.IDA_SDK_VERSION < 690:
     from PySide import QtGui, QtCore
@@ -89,16 +91,19 @@ class IOCTLTracker:
 
     def __init__(self):
         self.ioctl_locs = set()
+        self.ioctls = []
+    
+    def add_ioctl(self, addr, value):
+        self.ioctl_locs.add(addr)
+        self.ioctls.append((addr, value))
 
-    def add_ioctl(self, ioctl):
-        self.ioctl_locs.add(ioctl)
-
-    def remove_ioctl(self, ioctl):
-        self.ioctl_locs.remove(ioctl)
-
+    def remove_ioctl(self, addr, value):
+        self.ioctl_locs.remove(addr)
+        self.ioctls.remove((addr, value))
+		
     def print_table(self, ioctls):
         print "%-10s | %-10s | %-42s | %-10s | %-22s | %s" % ("Address", "IOCTL Code", "Device", "Function", "Method", "Access")
-        for addr, ioctl_code in ioctls:
+        for (addr, ioctl_code) in ioctls:
             function = ioctl_decoder.get_function(ioctl_code)
             device_name, device_code = ioctl_decoder.get_device(ioctl_code)
             method_name, method_code = ioctl_decoder.get_method(ioctl_code)
@@ -122,26 +127,38 @@ def find_all_ioctls():
         # grab the last two instructions in the block 
         last_inst = idc.PrevHead(block.endEA)
         penultimate_inst = idc.PrevHead(last_inst)
-        # If the penultimate instruction is cmp or sub against an immediate value immediatly preceding a 'jz' 
-        # then it's a decent guess that it's an IOCTL code (if this is a disptach function)
+        # If the penultimate instruction is cmp or sub against an immediate value immediately preceding a 'jz' 
+        # then it's a decent guess that it's an IOCTL code (if this is a dispatch function)
         if idc.GetMnem(penultimate_inst) in ['cmp', 'sub'] and idc.GetOpType(penultimate_inst, 1) == 5:
             if idc.GetMnem(last_inst) == 'jz':
-                ioctl_tracker.add_ioctl(penultimate_inst)
-    for inst in ioctl_tracker.ioctl_locs:
-        value = get_operand_value(inst)
-        ioctls.append((inst, value))
+                value = get_operand_value(penultimate_inst)
+                ioctls.append((penultimate_inst, value))
+                ioctl_tracker.add_ioctl(penultimate_inst, value)
+        
     return ioctls
 
+def track_ioctls(ioctls):
+    global ioctl_tracker
+    for addr, ioctl_code in ioctls:
+        ioctl_tracker.add_ioctl(addr, ioctl_code)
+        define = ioctl_decoder.get_define(ioctl_code)
+        make_comment(addr, define)
+    ioctl_tracker.print_table(ioctls)
 
 def decode_all_ioctls():
     """Attempts to locate all the IOCTLs in a function and decode them all"""
 
     global ioctl_tracker
     ioctls = find_all_ioctls()
-    for addr, ioctl_code in ioctls:
-        define = ioctl_decoder.get_define(ioctl_code)
-        make_comment(addr, define)
-    ioctl_tracker.print_table(ioctls)
+    track_ioctls(ioctls)
+	
+def decode_angr():
+	"""Attempts to locate all the IOCTLs in a function and decode them all using symbolic execution"""
+	
+	path = idaapi.get_input_file_path()
+	addr = idc.ScreenEA()
+	ioctls = angr_analysis.angr_find_ioctls(path, addr)
+	track_ioctls(ioctls)
 
 def get_position_and_translate():
     """
@@ -152,8 +169,9 @@ def get_position_and_translate():
     pos = idc.ScreenEA()
     if idc.GetOpType(pos, 1) != 5:   # Check the second operand to the instruction is an immediate
         return
-    ioctl_tracker.add_ioctl(pos)
+    
     value = get_operand_value(pos)
+    ioctl_tracker.add_ioctl(pos, value)
     define = ioctl_decoder.get_define(value)
     make_comment(pos, define)
     # Print summary table each time a new IOCTL code is decoded
@@ -245,6 +263,13 @@ def find_dispatch_function():
             if i in cfg_funcs:
                 print i
 
+def get_pool_tags():
+	""" Display a list of the pool tags in use by the current driver.
+	"""
+	
+	pooltags = dump_pool_tags.get_all_pooltags()
+	print("The following pooltags are in use by the binary: ")
+	print(pooltags)
 
 class ActionHandler(idaapi.action_handler_t):
     """Basic wrapper class to avoid all action handlers needing to implement update identically"""
@@ -266,7 +291,13 @@ class DecodeAllHandler(ActionHandler):
     def activate(self, ctx):
         decode_all_ioctls()
 
-
+class DecodeAngrHandler(ActionHandler):
+    """Wrapper for `decode_angr` used for right-click context menu hook"""
+    
+    def activate(self, ctx):
+        decode_angr()
+		
+		
 class ShowAllHandler(ActionHandler):
     """Used for Show All option in right-click context menu, creates a `DisplayIOCTLSForm` instance, remaining logic is contained within that class."""
 
@@ -289,7 +320,7 @@ class InvalidHandler(ActionHandler):
         comment = comment.replace(define, "")
         idc.MakeComm(pos, comment)
         # Remove the ioctl from the valid list and add it to the invalid list to avoid 'find_all_ioctls' accidently re-indexing it.
-        ioctl_tracker.remove_ioctl(pos)
+        ioctl_tracker.remove_ioctl(pos, code)
 
 
 def register_dynamic_action(form, popup, description, handler):
@@ -310,28 +341,29 @@ class WinDriverHooks(idaapi.UI_Hooks):
         tft = idaapi.get_tform_type(form)
         if tft != idaapi.BWN_DISASM:
             return
-        if not device_type.is_driver():
-            return
+        is_driver = device_type.is_driver()
+
         pos = idc.ScreenEA()
-        # If the second argument to the current selected instruction is an immediately
+        register_dynamic_action(form, popup, 'Decode All IOCTLs in Function', DecodeAllHandler())
+        register_dynamic_action(form, popup, 'Decode IOCTLs using Angr', DecodeAngrHandler())
+		# If the second argument to the current selected instruction is an immediately
         # then give the option to decode it.
         if idc.GetOpType(pos, 1) == 5:
             register_dynamic_action(form, popup, 'Decode IOCTL', DecodeHandler())
             if pos in ioctl_tracker.ioctl_locs:
                 register_dynamic_action(form, popup, 'Invalid IOCTL', InvalidHandler())
-        register_dynamic_action(form, popup, 'Decode All IOCTLs in Function', DecodeAllHandler())
         if len(ioctl_tracker.ioctl_locs) > 0:
             register_dynamic_action(form, popup, 'Show All IOCTLs', ShowAllHandler())
 
 
 class WinDriverPlugin(idaapi.plugin_t):
-    """Main plugin class, registers the various menu items, hot keys and menu hooks as well as initialising the plugins global state."""
+    """Main plugin class, registers the various menu items, hot keys and menu hooks as well as initialising the plugin's global state."""
 
     flags = idaapi.PLUGIN_UNL
     comment = "Decodes Windows Device I/O control codes into DeviceType, FunctionCode, AccessType and MethodType."
     help = ''
     wanted_name = 'Windows IOCTL code decoder'
-    # No hotkey for the plugin - individuals actions have thier own
+    # No hot key for the plugin - individuals actions have their own
     wanted_hotkey = ""
 
     def init(self):
@@ -367,6 +399,15 @@ class WinDriverPlugin(idaapi.plugin_t):
             callback=get_position_and_translate
         )
         decode_ioctl.registerAction()
+        pool_tags = UiAction(
+            id="ioctl:pools_tags",
+            name="Dump Pool Tags",
+            tooltip="Attempts to find all pool tags used by the driver and display them a format which be included in pooltags.txt for debugging.",
+            menuPath="Edit/IOCTL/",
+            shortcut="Ctrl+Alt+Z",
+            callback=get_pool_tags
+        )
+        pool_tags.registerAction()
         return idaapi.PLUGIN_OK
 
     def run(self, _=0):

@@ -10,12 +10,16 @@ If you want [FLOSS](https://github.com/fireeye/flare-floss) to be used when hunt
 pip install https://github.com/williballenthin/vivisect/zipball/master   
 pip install https://github.com/fireeye/flare-floss/zipball/master
 ```
+If you want to use Angr to find IOCTL codes used in the dispatch function, the following links provide potential install instructions.   
+[http://angr.horse](http://angr.horse)   
+[https://github.com/andreafioraldi/angr-win64-wheels](https://github.com/andreafioraldi/angr-win64-wheels)   
 
 ## Shortcuts
 
 *Ctrl+Alt+A* => Find potential device names    
 *Ctrl+Alt+S* => Find the dispatch function   
-*Ctrl+Alt+D* => Decode currently selected IOCTL code   
+*Ctrl+Alt+D* => Decode currently selected IOCTL code  
+*Ctrl+Alt+Z* => Dump pooltags 
 
 ## Usage
 
@@ -45,8 +49,17 @@ This will leave any non-IOCTL define based comment contents intact.
 ![](/screenshots/decode_ioctl_mark_invalid_only_delete_define.PNG)   
 The right-click menu also included a display all defines option which display the CTL_CODE definitions for all IOCTL codes decoded in the current session:   
 ![](/screenshots/decode_ioctl_display_all_defines.PNG)   
-If you right click on the first instruction of the function you beleive to be the IOCTL dispatcher a decode all options appears, this attempt to decode all IOCTL codes it can find in the function. This super hacky but can speed things up most of the time.   
+If you right click on the first instruction of the function you believe to be the IOCTL dispatcher a decode all options appears, this attempt to decode all IOCTL codes it can find in the function. This is super hacky but can speed things up most of the time.   
 ![](/screenshots/decode_all_ioctls_fail.PNG)   
+If you want to do this in a smarter way and can get [Angr](http://angr.horse) installed successfully, the '' option shown below will use symbolic execution to attempt to recover all IOCTL codes. This will deal with jump tables, optimizations etc whereas the dumb method is just looking for comparisons to constants. 
+![](/screenshots/angr_decode_option.png)
+
+### Viewing IOCTL codes 
+
+### Dumping pool tags 
+
+Using *Ctrl+Alt+Z* it's possible to dump the pooltags in use by the binary in a format which works with pooltags.txt. This means the output can be copy pasted at the end of the file and then be picked up by windbg etc.
+![](/screenshots/dump_pool_tags.PNG)
 
 ## Acknowledgements
 

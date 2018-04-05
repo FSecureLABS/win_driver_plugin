@@ -1,4 +1,4 @@
-""" Device name finding functions. Using a unicode string search and searching for stack based and obsfucated strings.
+""" Device name finding functions. Using a Unicode string search and searching for stack based and obfuscated strings.
  A bulk of this is taken from https://github.com/fireeye/flare-floss"""
 import mmap
 import re
@@ -47,7 +47,7 @@ def extract_unicode_strings(buf, n=4):
 
 
 def get_unicode_device_names():
-    """Returns all unicode strings within the binary currently being analysed in IDA which might be device names"""
+    """Returns all Unicode strings within the binary currently being analysed in IDA which might be device names"""
 
     path = idc.GetInputFile()
     min_length = 4
@@ -69,10 +69,10 @@ def find_unicode_device_name():
     if len(possible_names) == 1 or len(possible_names) == 2:
         if '\\Device\\' in possible_names or '\\DosDevices\\' in possible_names:
             if len(possible_names) == 1:
-                print "The Device prefix was found but no full device paths, the device name is likely obsfucated or created on the stack."
+                print "The Device prefix was found but no full device paths, the device name is likely obfuscated or created on the stack."
                 return False
             elif '\\Device\\' in possible_names and '\\DosDevices\\' in possible_names:
-                print "The Device prefixs were found but no full device paths, the device name is likely obsfucated or created on the stack."
+                print "The Device prefixs were found but no full device paths, the device name is likely obfuscated or created on the stack."
                 return False
             else:
                 print "Potential device name: "
@@ -91,18 +91,18 @@ def find_unicode_device_name():
             print "\t" + i
         return True
     else:
-        print "No potential device names found - it may be obsfucated or created on the stack in some way."
+        print "No potential device names found - it may be obfuscated or created on the stack in some way."
         return False
 
 
 def search():
     """
-    Attempts to find potential device names in the currently opened binary, it starts by searching for unicode device names,
-    if this fails then it utilises FLOSS to search for stack based and obsfucated strings.
+    Attempts to find potential device names in the currently opened binary, it starts by searching for Unicode device names,
+    if this fails then it utilises FLOSS to search for stack based and obfuscated strings.
     """
 
     if not find_unicode_device_name():
-        print "Unicode device name not found, attempting to find obsfucated and stack based strings."
+        print "Unicode device name not found, attempting to find obfuscated and stack based strings."
         try:
             import floss
             import floss.identification_manager
@@ -134,8 +134,8 @@ def search():
         if len(decoded_strings) > 0:
             for i in decoded_strings:
                 device_names.add(str(i.s))
-            print "Potential device names from obsfucated or stack strings:"
+            print "Potential device names from obfuscated or stack strings:"
             for i in device_names:
                 print i
         else:
-            print "No obsfucated or stack strings found :("
+            print "No obfuscated or stack strings found :("
