@@ -51,10 +51,22 @@ The right-click menu also included a display all defines option which display th
 ![](/screenshots/decode_ioctl_display_all_defines.PNG)   
 If you right click on the first instruction of the function you believe to be the IOCTL dispatcher a decode all options appears, this attempt to decode all IOCTL codes it can find in the function. This is super hacky but can speed things up most of the time.   
 ![](/screenshots/decode_all_ioctls_fail.PNG)   
-If you want to do this in a smarter way and can get [Angr](http://angr.horse) installed successfully, the '' option shown below will use symbolic execution to attempt to recover all IOCTL codes. This will deal with jump tables, optimizations etc whereas the dumb method is just looking for comparisons to constants. 
+If you want to do this in a smarter way and can get [Angr](http://angr.horse) installed successfully, the 'Decode IOCTLs using Angr' option shown below will use symbolic execution to attempt to recover all IOCTL codes. This will deal with jump tables, optimizations etc whereas the dumb method is just looking for comparisons to constants. 
 ![](/screenshots/angr_decode_option.png)
 
 ### Viewing IOCTL codes 
+
+If you've decoder one or more IOCTLs a new option appears on the plugins right click context menu.
+
+![](/screenshots/view_all.png)
+
+This will take you to a new tab which shows all the IOCTLs which have been found. 
+
+![](/screenshots/define_tab.PNG)
+
+Right clicking on any IOCTL opens up some more commands, such as copying them to the clipboard or attempting to load the driver and send them.
+
+![](/screenshots/define_tab_right_click.PNG)
 
 ### Dumping pool tags 
 
