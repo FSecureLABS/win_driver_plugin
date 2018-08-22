@@ -109,7 +109,7 @@ def search():
             import floss.main
             import floss.stackstrings
             import viv_utils
-        except:
+        except ImportError:
             print "Please install FLOSS to continue, see: https://github.com/fireeye/flare-floss/"
             return
         logging.basicConfig() #To avoid logger handler not found errors, from https://github.com/fireeye/flare-floss/blob/66f67a49a38ae028a5e86f1de743c384d5271901/scripts/idaplugin.py#L154

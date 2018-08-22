@@ -23,12 +23,6 @@ import win_driver_plugin.device_type as device_type
 import win_driver_plugin.angr_analysis as angr_analysis
 import win_driver_plugin.dump_pool_tags as dump_pool_tags
 
-if idaapi.IDA_SDK_VERSION < 690:
-    from PySide import QtGui, QtCore
-else:
-    from PyQt5 import QtCore, QtGui
-
-
 class UiAction(idaapi.action_handler_t):
     """Simple wrapper class for creating action handlers which add options to menu's and are triggered via hot keys"""
 
@@ -134,7 +128,6 @@ def find_all_ioctls():
                 value = get_operand_value(penultimate_inst)
                 ioctls.append((penultimate_inst, value))
                 ioctl_tracker.add_ioctl(penultimate_inst, value)
-        
     return ioctls
 
 def track_ioctls(ioctls):
@@ -188,16 +181,16 @@ def find_dispatch_by_struct_index():
     
     out = set()
     for function_ea in idautils.Functions():
-        flags = GetFunctionFlags(function_ea)
+        flags = idc.get_func_flags(function_ea)
         # skip library functions
-        if flags & FUNC_LIB:
+        if flags & idc.FUNC_LIB:
             continue
         func = idaapi.get_func(function_ea)
         addr = func.startEA
         while addr < func.endEA:
-            if GetMnem(addr) == 'mov':
-                if '+70h' in GetOpnd(addr, 0) and idc.GetOpType(addr, 1) == 5:
-                    out.add(GetOpnd(addr, 1))
+            if idc.GetMnem(addr) == 'mov':
+                if '+70h' in idc.GetOpnd(addr, 0) and idc.GetOpType(addr, 1) == 5:
+                    out.add(idc.GetOpnd(addr, 1))
             addr = idc.NextHead(addr)
     return out
 
@@ -214,16 +207,16 @@ def find_dispatch_by_cfg():
     caller = dict()
     # Loop through all the functions in the binary
     for function_ea in idautils.Functions():
-        flags = GetFunctionFlags(function_ea)
+        flags = idc.get_func_flags(function_ea)
         # skip library functions
-        if flags & FUNC_LIB:
+        if flags & idc.FUNC_LIB:
             continue
-        f_name = GetFunctionName(function_ea)
+        f_name = idc.GetFunctionName(function_ea)
         # For each of the incoming references
-        for ref_ea in CodeRefsTo(function_ea, 0):
+        for ref_ea in idautils.CodeRefsTo(function_ea, 0):
             called.add(f_name)
             # Get the name of the referring function
-            caller_name = GetFunctionName(ref_ea)
+            caller_name = idc.GetFunctionName(ref_ea)
             if caller_name not in caller.keys():
                 caller[caller_name] = 1
             else:
@@ -341,7 +334,6 @@ class WinDriverHooks(idaapi.UI_Hooks):
         tft = idaapi.get_tform_type(form)
         if tft != idaapi.BWN_DISASM:
             return
-        is_driver = device_type.is_driver()
 
         pos = idc.ScreenEA()
         register_dynamic_action(form, popup, 'Decode All IOCTLs in Function', DecodeAllHandler())
@@ -367,6 +359,8 @@ class WinDriverPlugin(idaapi.plugin_t):
     wanted_hotkey = ""
 
     def init(self):
+        if device_type.is_driver():
+            print("Driver type: {}".format(device_type.driver_type()))
         global ioctl_tracker
         ioctl_tracker = IOCTLTracker()
         global hooks

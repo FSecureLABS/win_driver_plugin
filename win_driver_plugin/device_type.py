@@ -1,4 +1,3 @@
-import idc
 import idautils
 import idaapi
 #Originally written by/modified from NCC Group's DriverBuddy https://github.com/nccgroup/DriverBuddy/tree/master/DriverBuddy
@@ -17,7 +16,7 @@ def driver_type():
     for i in range(0, implist):
         name = idaapi.get_import_module_name(i)
         idaapi.enum_import_names(i, cb)
-    for i in names:
+    for name in names:
         if name == "FltRegisterFilter":
             return "Mini-Filter"
         elif name == "WdfVersionBind":

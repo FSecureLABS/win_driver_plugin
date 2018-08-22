@@ -2,10 +2,8 @@ import idc
 import idaapi
 from idaapi import Choose2
 import driverlib
-import re
 import ctypes
 import ioctl_decoder as ioctl_decoder
-import sys
 
 # yoinked from https://stackoverflow.com/a/25678113
 OpenClipboard = ctypes.windll.user32.OpenClipboard
@@ -34,8 +32,8 @@ class stop_unload_handler_t(idaapi.action_handler_t):
             return
         name = idc.GetInputFile().split('.')[0]
         driver = driverlib.Driver(idc.GetInputFilePath(),name)
-        stopped = driver.stop()
-        unloaded = driver.unload()
+        driver.stop()
+        driver.unload()
 
     def update(self, ctx):
         return idaapi.AST_ENABLE_FOR_FORM if idaapi.is_chooser_tform(ctx.form_type) else idaapi.AST_DISABLE_FOR_FORM
@@ -50,8 +48,8 @@ class start_load_handler_t(idaapi.action_handler_t):
             return
         name = idc.GetInputFile().split('.')[0]
         driver = driverlib.Driver(idc.GetInputFilePath(),name)
-        loaded = driver.load()
-        started = driver.start()
+        driver.load()
+        driver.start()
         
     def update(self, ctx):
         return idaapi.AST_ENABLE_FOR_FORM if idaapi.is_chooser_tform(ctx.form_type) else idaapi.AST_DISABLE_FOR_FORM        
@@ -99,6 +97,7 @@ class remove_ioctl(idaapi.action_handler_t):
 		pos = int(ioctl[0], 16)
 		define = ioctl[5]
 		global ioctl_tracker
+		code = None
 		for (addr, val) in ioctl_tracker.ioctls:
 			if addr == pos:
 				code = val
@@ -107,7 +106,7 @@ class remove_ioctl(idaapi.action_handler_t):
 		comment = idc.Comment(pos)
 		comment = comment.replace(define, "")
 		idc.MakeComm(pos, comment)
-		# Remove the ioctl from the valid list and add it to the invalid list to avoid 'find_all_ioctls' accidently re-indexing it.
+		# Remove the ioctl from the valid list and add it to the invalid list to avoid 'find_all_ioctls' accidentally re-indexing it.
 		ioctl_tracker.remove_ioctl(pos, code)
 		
 	def update(self, ctx):
@@ -229,7 +228,7 @@ def create_ioctl_tab(tracker, modal=False):
             start_load_handler_t()))
     global c
     c = MyChoose2("IOCTL Code Viewer", items, modal=modal)
-    r = c.show()
+    c.show()
     form = idaapi.get_current_tform()
     idaapi.attach_action_to_popup(form, None, "choose2:act%s" % action)
     idaapi.attach_action_to_popup(form, None, "choose2:actcopy_defines")
