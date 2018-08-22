@@ -1,6 +1,5 @@
 import ctypes
 import ctypes.wintypes as wintypes
-from ctypes import windll
 
 LPCSTR = LPCTSTR = ctypes.c_char_p
 LPDWORD = ctypes.POINTER(wintypes.DWORD)
@@ -86,12 +85,6 @@ FILE_SHARE_DELETE = 0x00000004
 FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 
-CREATE_ALWAYS = 2
-CREATE_NEW = 1
-OPEN_ALWAYS = 4
-OPEN_EXISTING = 3
-TRUNCATE_EXISTING = 5
-
 FILE_ATTRIBUTE_ARCHIVE = 0x20
 FILE_ATTRIBUTE_ENCRYPTED = 0x4000
 FILE_ATTRIBUTE_HIDDEN = 0x2
@@ -124,7 +117,7 @@ class Driver:
         """See: CreateFile function
         http://msdn.microsoft.com/en-us/library/windows/desktop/aa363858(v=vs.85).aspx
         """
-        CreateFile_Fn = windll.kernel32.CreateFileA
+        CreateFile_Fn = ctypes.windll.kernel32.CreateFileA
         CreateFile_Fn.argtypes = [
                 wintypes.LPCSTR,                    # _In_          LPCTSTR lpFileName
                 wintypes.DWORD,                     # _In_          DWORD dwDesiredAccess
@@ -148,7 +141,7 @@ class Driver:
         """See: DeviceIoControl function
         http://msdn.microsoft.com/en-us/library/aa363216(v=vs.85).aspx
         """
-        DeviceIoControl_Fn = windll.kernel32.DeviceIoControl
+        DeviceIoControl_Fn = ctypes.windll.kernel32.DeviceIoControl
         DeviceIoControl_Fn.argtypes = [
                 wintypes.HANDLE,                    # _In_          HANDLE hDevice
                 wintypes.DWORD,                     # _In_          DWORD dwIoControlCode
@@ -248,7 +241,7 @@ def create_service(service_manager_handle, service_name, display_name, desired_a
 	https://msdn.microsoft.com/en-gb/library/windows/desktop/ms682450(v=vs.85).aspx
 	"""
 
-	CreateService_Fn = windll.Advapi32.CreateServiceA	#SC_HANDLE WINAPI CreateService(
+	CreateService_Fn = ctypes.windll.Advapi32.CreateServiceA	#SC_HANDLE WINAPI CreateService(
 	CreateService_Fn.argtypes = [						#
 		wintypes.SC_HANDLE,								#	_In_      SC_HANDLE hSCManager,
 		LPCTSTR,								        #	_In_      LPCTSTR   lpServiceName,	
@@ -286,7 +279,7 @@ def open_service(service_manager_handle, service_name, desired_access):
 	""" See: OpenService function
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms684330(v=vs.85).aspx
 	"""
-	OpenService_Fn = windll.Advapi32.OpenServiceA 	#SC_HANDLE WINAPI OpenService(
+	OpenService_Fn = ctypes.windll.Advapi32.OpenServiceA 	#SC_HANDLE WINAPI OpenService(
 	OpenService_Fn.argtypes = [						#
 		wintypes.HANDLE,							#	_In_ SC_HANDLE hSCManager,
 		LPCTSTR,							#	_In_ LPCTSTR   lpServiceName,
@@ -304,7 +297,7 @@ def control_service(service_handle, control, service_status):
 	"""See: ControlService function
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms682108(v=vs.85).aspx
 	"""
-	ControlService_Fn = windll.Advapi32.ControlService	 	#BOOL WINAPI ControlService(
+	ControlService_Fn = ctypes.windll.Advapi32.ControlService	 	#BOOL WINAPI ControlService(
 	ControlService_Fn.argtypes = [							#
 		wintypes.SC_HANDLE,									#	_In_  SC_HANDLE        hService,
 		wintypes.DWORD,										#	_In_  DWORD            dwControl,
@@ -322,7 +315,7 @@ def close_service_handle(service_handle):
 	"""See: CloseServiceHandle function 
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms682028(v=vs.85).aspx
 	"""
-	CloseServiceHandle_Fn = windll.Advapi32.CloseServiceHandle	#BOOL WINAPI CloseServiceHandle(
+	CloseServiceHandle_Fn = ctypes.windll.Advapi32.CloseServiceHandle	#BOOL WINAPI CloseServiceHandle(
 	CloseServiceHandle_Fn.argtypes = [
 		wintypes.SC_HANDLE										#	_In_ SC_HANDLE hSCObject
 	]
@@ -336,7 +329,7 @@ def delete_service(service_handle):
 	"""See: DeleteService function
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms682562(v=vs.85).aspx
 	"""
-	DeleteService_Fn = windll.Advapi32.DeleteService	#BOOL WINAPI DeleteService(
+	DeleteService_Fn = ctypes.windll.Advapi32.DeleteService	#BOOL WINAPI DeleteService(
 	DeleteService_Fn.argtypes = [						#
 		wintypes.SC_HANDLE								#	_In_ SC_HANDLE hService
 	]
@@ -350,7 +343,7 @@ def open_sc_manager(machine_name, database_name, desired_access):
 	"""See: OpenSCManager function
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms684323(v=vs.85).aspx
 	"""
-	OpenSCManager_Fn = windll.Advapi32.OpenSCManagerA	#SC_HANDLE WINAPI OpenSCManager(
+	OpenSCManager_Fn = ctypes.windll.Advapi32.OpenSCManagerA	#SC_HANDLE WINAPI OpenSCManager(
 	OpenSCManager_Fn.argtypes = [						#
 		LPCTSTR,								#	_In_opt_ LPCTSTR lpMachineName,
 		LPCTSTR,								#	_In_opt_ LPCTSTR lpDatabaseName,
@@ -369,7 +362,7 @@ def start_service(service_handle, service_arg_count, service_arg_vectors):
 	https://msdn.microsoft.com/en-us/library/windows/desktop/ms686321(v=vs.85).aspx
 	"""
 	
-	StartService_Fn = windll.Advapi32.StartServiceA	#BOOL WINAPI StartService(
+	StartService_Fn = ctypes.windll.Advapi32.StartServiceA	#BOOL WINAPI StartService(
 	StartService_Fn.argtypes = [					#
 		wintypes.SC_HANDLE,							#	_In_ 	 SC_HANDLE hService,
 		wintypes.DWORD,								#	_In_ 	 DWORD     dwNumServiceArgs,
@@ -387,7 +380,7 @@ def remove_driver(SchSCManager, driver_name):
 
     schService = open_service(SchSCManager, driver_name, SERVICE_ALL_ACCESS )
 
-    if schService == None:
+    if schService is None:
         return False
 
     ret = delete_service(schService)

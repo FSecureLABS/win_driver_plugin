@@ -6,7 +6,7 @@ def angr_find_ioctls(bin, dispatch_addr):
 	
 	try:
 		import angr
-	except:
+	except ImportError:
 		print "Please install angr to continue, see: https://github.com/andreafioraldi/angr-win64-wheels"
 		return
 	
@@ -72,10 +72,8 @@ def find_ioctls(p, dispatch_addr):
 							val_addr[val] = i.addr
 					except simuvex.SimUnsatError:
 						print("failed to get {}".format(reg))
-						pass
 					except claripy.errors.ClaripyZeroDivisionError:
 						print("failed to get {}".format(reg))
-						pass
 		pg.step()
 		steps += 1
 	device_codes = {}
@@ -84,7 +82,7 @@ def find_ioctls(p, dispatch_addr):
 	for i in generic_reg_vals:
 		try:
 			device_codes[((i >> 16) & 0xffff)] += 1
-		except:
+		except KeyError:
 			device_codes[((i >> 16) & 0xffff)] = 1
 
 	if len(device_codes.keys()) == 0:
